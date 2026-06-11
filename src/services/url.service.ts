@@ -84,7 +84,7 @@ export class UrlService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return urls.map((url) => ({
+    return urls.map((url: any) => ({
       ...url,
       shortUrl: this.constructShortUrl(url.shortCode),
     }));
