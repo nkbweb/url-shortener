@@ -12,8 +12,8 @@ model User {
   password  String
   createdAt DateTime @default(now())
 
-  urls      Url[]
-  sessions  Session[]
+  urls     Url[]
+  sessions Session[]
 }
 
 model Session {
@@ -24,6 +24,8 @@ model Session {
   createdAt    DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id])
+
+  @@index([expiresAt])
 }
 
 model Url {
@@ -35,4 +37,22 @@ model Url {
 
   userId String?
   user   User?   @relation(fields: [userId], references: [id])
+
+  clicksData Click[]
+
+  @@index([userId])
+}
+
+model Click {
+  id        String   @id @default(cuid())
+  urlId     String
+  timestamp DateTime @default(now())
+  referrer  String?
+  userAgent String?
+  ip        String?
+
+  url Url @relation(fields: [urlId], references: [id], onDelete: Cascade)
+
+  @@index([urlId])
+  @@index([urlId, timestamp])
 }
