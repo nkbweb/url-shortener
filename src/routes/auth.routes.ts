@@ -9,6 +9,10 @@ import {
   refreshSchema,
   changePasswordSchema,
 } from '../validators/auth.validator';
+import {
+  forgotPasswordSchema,
+  resetPasswordSchema,
+} from '../validators/reset.validator';
 
 const router = Router();
 
@@ -43,6 +47,19 @@ router.post(
   '/logout',
   authenticate,
   authController.logout.bind(authController),
+);
+
+router.post(
+  '/forgot-password',
+  authLimiter,
+  validate(forgotPasswordSchema),
+  authController.forgotPassword.bind(authController),
+);
+
+router.post(
+  '/reset-password',
+  validate(resetPasswordSchema),
+  authController.resetPassword.bind(authController),
 );
 
 export default router;
