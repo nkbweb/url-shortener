@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma';
 import { getShortCode } from '../utils/shortCodeGenerator';
 import { isUrlReachable } from '../utils/urlReachability';
 import { analyticsService } from './analytics.service';
+import { getCachedUrl, setCachedUrl, delCachedUrl } from '../lib/redis';
 
 export class UrlService {
   private getBaseUrl(): string {
@@ -76,6 +77,12 @@ export class UrlService {
     shortCode: string,
     metadata: { referrer?: string; userAgent?: string; ip?: string },
   ) {
+    const cached = await getCachedUrl(shortCode);
+    if (cached) {
+      analyticsService.recordClick(cached.id, metadata).catch(() => {});
+      return cached;
+    }
+
     const url = await prisma.url.findUnique({
       where: { shortCode },
     });
@@ -90,6 +97,8 @@ export class UrlService {
     });
 
     await analyticsService.recordClick(url.id, metadata);
+
+    setCachedUrl(url).catch(() => {});
 
     return url;
   }
@@ -131,7 +140,9 @@ export class UrlService {
       throw new Error('Unauthorized to update this URL');
     }
 
-    if (data.shortCode && data.shortCode !== url.shortCode) {
+    const codeChanged = data.shortCode && data.shortCode !== url.shortCode;
+
+    if (codeChanged) {
       const existing = await prisma.url.findUnique({
         where: { shortCode: data.shortCode },
       });
@@ -147,6 +158,11 @@ export class UrlService {
         ...(data.shortCode ? { shortCode: data.shortCode } : {}),
       },
     });
+
+    delCachedUrl(url.shortCode).catch(() => {});
+    if (codeChanged) {
+      delCachedUrl(updated.shortCode).catch(() => {});
+    }
 
     return {
       ...updated,
@@ -170,6 +186,8 @@ export class UrlService {
     await prisma.url.delete({
       where: { id },
     });
+
+    delCachedUrl(url.shortCode).catch(() => {});
 
     return { message: 'URL deleted successfully' };
   }
