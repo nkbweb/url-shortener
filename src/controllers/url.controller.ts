@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { urlService } from '../services/url.service';
 import { analyticsService } from '../services/analytics.service';
 import { AuthRequest } from '../middleware/auth.middleware';
+import { clickQueue } from '../lib/queue';
 
 export class UrlController {
   async createShortUrl(req: Request, res: Response) {
@@ -33,11 +34,20 @@ export class UrlController {
       const { shortCode } = req.params;
       const code = Array.isArray(shortCode) ? shortCode[0] : shortCode;
 
-      const url = await urlService.getUrlByShortCodeWithTracking(code, {
+      const url = await urlService.getUrlByShortCodeForRedirect(code);
+
+      const metadata = {
         referrer: req.get('Referer'),
         userAgent: req.get('User-Agent'),
         ip: req.ip,
-      });
+      };
+
+      await clickQueue.add(
+        'record-click',
+        { urlId: url.id, metadata },
+        { delay: 100000 },
+      );
+      console.log(`[BullMQ] 📤 Added job for URL ${url.id} (delay: 10s)`);
 
       res.redirect(url.originalUrl);
     } catch (error: any) {

@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { getShortCode } from '../utils/shortCodeGenerator';
 import { isUrlReachable } from '../utils/urlReachability';
-import { analyticsService } from './analytics.service';
+
 import { getCachedUrl, setCachedUrl, delCachedUrl } from '../lib/redis';
 
 export class UrlService {
@@ -73,13 +73,12 @@ export class UrlService {
     return url;
   }
 
-  async getUrlByShortCodeWithTracking(
+  async getUrlByShortCodeForRedirect(
     shortCode: string,
-    metadata: { referrer?: string; userAgent?: string; ip?: string },
   ) {
     const cached = await getCachedUrl(shortCode);
     if (cached) {
-      analyticsService.recordClick(cached.id, metadata).catch(() => {});
+      console.log(`[Redis] 🎯 Cache HIT for ${shortCode}`);
       return cached;
     }
 
@@ -91,12 +90,7 @@ export class UrlService {
       throw new Error('Short URL not found');
     }
 
-    await prisma.url.update({
-      where: { id: url.id },
-      data: { clicks: { increment: 1 } },
-    });
-
-    await analyticsService.recordClick(url.id, metadata);
+    console.log(`[Redis] 💫 Cache MISS for ${shortCode}, fetched from DB`);
 
     setCachedUrl(url).catch(() => {});
 
