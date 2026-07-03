@@ -54,6 +54,34 @@ export class AuthController {
     }
   }
 
+  async changePassword(req: AuthRequest, res: Response) {
+    try {
+      const userId = req.userId;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          message: 'Unauthorized',
+        });
+      }
+      const { currentPassword, newPassword } = req.body;
+      const result = await authService.changePassword(
+        userId,
+        currentPassword,
+        newPassword,
+      );
+
+      res.status(200).json({
+        success: true,
+        message: result.message,
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Password change failed',
+      });
+    }
+  }
+
   async logout(req: AuthRequest, res: Response) {
     try {
       const userId = req.userId;
@@ -72,6 +100,38 @@ export class AuthController {
       res.status(401).json({
         success: false,
         message: error.message || 'Logout failed',
+      });
+    }
+  }
+
+  async forgotPassword(req: Request, res: Response) {
+    try {
+      const { email } = req.body;
+      const result = await authService.forgotPassword(email);
+      res.status(200).json({
+        success: true,
+        message: result.message,
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Failed to process request',
+      });
+    }
+  }
+
+  async resetPassword(req: Request, res: Response) {
+    try {
+      const { token, newPassword } = req.body;
+      const result = await authService.resetPassword(token, newPassword);
+      res.status(200).json({
+        success: true,
+        message: result.message,
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Failed to reset password',
       });
     }
   }

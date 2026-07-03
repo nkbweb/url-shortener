@@ -2,6 +2,8 @@ import { prisma } from '../lib/prisma';
 import { getShortCode } from '../utils/shortCodeGenerator';
 import { isUrlReachable } from '../utils/urlReachability';
 
+import { getCachedUrl, setCachedUrl, delCachedUrl } from '../lib/redis';
+
 export class UrlService {
   private getBaseUrl(): string {
     return process.env.BASE_URL || 'http://localhost:3000';
@@ -16,19 +18,16 @@ export class UrlService {
     shortCode?: string,
     userId?: string,
   ) {
-    // Check if URL is reachable
     const isReachable = await isUrlReachable(originalUrl);
     if (!isReachable) {
       throw new Error('URL is not accessible or does not exist');
     }
 
-    // Check if URL already exists (for duplicate handling)
     const existingUrl = await prisma.url.findFirst({
       where: { originalUrl },
     });
 
     if (existingUrl) {
-      // If no short code provided, return the existing one
       if (!shortCode) {
         return {
           id: existingUrl.id,
@@ -39,13 +38,10 @@ export class UrlService {
           createdAt: existingUrl.createdAt,
         };
       }
-      // If short code provided but different from existing, continue to create new
     }
 
-    // Get or generate short code
     const finalShortCode = await getShortCode(shortCode);
 
-    // Create the URL
     const url = await prisma.url.create({
       data: {
         originalUrl,
@@ -69,7 +65,6 @@ export class UrlService {
       throw new Error('Short URL not found');
     }
 
-    // Increment click count
     await prisma.url.update({
       where: { id: url.id },
       data: { clicks: { increment: 1 } },
@@ -78,16 +73,95 @@ export class UrlService {
     return url;
   }
 
-  async getUserUrls(userId: string) {
+  async getUrlByShortCodeForRedirect(
+    shortCode: string,
+  ) {
+    const cached = await getCachedUrl(shortCode);
+    if (cached) {
+      console.log(`[Redis] 🎯 Cache HIT for ${shortCode}`);
+      return cached;
+    }
+
+    const url = await prisma.url.findUnique({
+      where: { shortCode },
+    });
+
+    if (!url) {
+      throw new Error('Short URL not found');
+    }
+
+    console.log(`[Redis] 💫 Cache MISS for ${shortCode}, fetched from DB`);
+
+    setCachedUrl(url).catch(() => {});
+
+    return url;
+  }
+
+  async getUserUrls(userId: string, cursor?: string, limit: number = 20) {
     const urls = await prisma.url.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
+      take: limit + 1,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
     });
 
-    return urls.map((url: any) => ({
-      ...url,
-      shortUrl: this.constructShortUrl(url.shortCode),
-    }));
+    const hasMore = urls.length > limit;
+    const items = hasMore ? urls.slice(0, limit) : urls;
+    const nextCursor = hasMore ? items[items.length - 1].id : null;
+
+    return {
+      urls: items.map((url: any) => ({
+        ...url,
+        shortUrl: this.constructShortUrl(url.shortCode),
+      })),
+      nextCursor,
+      hasMore,
+    };
+  }
+
+  async updateUrl(
+    id: string,
+    userId: string,
+    data: { originalUrl?: string; shortCode?: string },
+  ) {
+    const url = await prisma.url.findUnique({ where: { id } });
+
+    if (!url) {
+      throw new Error('URL not found');
+    }
+
+    if (url.userId !== userId) {
+      throw new Error('Unauthorized to update this URL');
+    }
+
+    const codeChanged = data.shortCode && data.shortCode !== url.shortCode;
+
+    if (codeChanged) {
+      const existing = await prisma.url.findUnique({
+        where: { shortCode: data.shortCode },
+      });
+      if (existing) {
+        throw new Error('Short code is already taken');
+      }
+    }
+
+    const updated = await prisma.url.update({
+      where: { id },
+      data: {
+        ...(data.originalUrl ? { originalUrl: data.originalUrl } : {}),
+        ...(data.shortCode ? { shortCode: data.shortCode } : {}),
+      },
+    });
+
+    delCachedUrl(url.shortCode).catch(() => {});
+    if (codeChanged) {
+      delCachedUrl(updated.shortCode).catch(() => {});
+    }
+
+    return {
+      ...updated,
+      shortUrl: this.constructShortUrl(updated.shortCode),
+    };
   }
 
   async deleteUrl(id: string, userId: string) {
@@ -106,6 +180,8 @@ export class UrlService {
     await prisma.url.delete({
       where: { id },
     });
+
+    delCachedUrl(url.shortCode).catch(() => {});
 
     return { message: 'URL deleted successfully' };
   }

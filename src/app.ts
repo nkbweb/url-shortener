@@ -1,4 +1,7 @@
 import express from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
+import morgan from 'morgan';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger.config';
 import authRoutes from './routes/auth.routes';
@@ -6,7 +9,15 @@ import urlRoutes from './routes/url.routes';
 
 const app = express();
 
-// Middleware
+// Security & parsing middleware
+app.use(helmet());
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || 'http://localhost:3001',
+    credentials: true,
+  }),
+);
+app.use(morgan('dev'));
 app.use(express.json());
 
 // Swagger UI endpoint

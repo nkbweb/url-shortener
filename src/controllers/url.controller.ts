@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { urlService } from '../services/url.service';
+import { analyticsService } from '../services/analytics.service';
 import { AuthRequest } from '../middleware/auth.middleware';
+import { clickQueue } from '../lib/queue';
 
 export class UrlController {
   async createShortUrl(req: Request, res: Response) {
@@ -32,7 +34,20 @@ export class UrlController {
       const { shortCode } = req.params;
       const code = Array.isArray(shortCode) ? shortCode[0] : shortCode;
 
-      const url = await urlService.getUrlByShortCode(code);
+      const url = await urlService.getUrlByShortCodeForRedirect(code);
+
+      const metadata = {
+        referrer: req.get('Referer'),
+        userAgent: req.get('User-Agent'),
+        ip: req.ip,
+      };
+
+      await clickQueue.add(
+        'record-click',
+        { urlId: url.id, metadata },
+        { delay: 100000 },
+      );
+      console.log(`[BullMQ] 📤 Added job for URL ${url.id} (delay: 10s)`);
 
       res.redirect(url.originalUrl);
     } catch (error: any) {
@@ -53,16 +68,91 @@ export class UrlController {
         });
       }
 
-      const urls = await urlService.getUserUrls(userId);
+      const cursor = req.query.cursor as string | undefined;
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+
+      const result = await urlService.getUserUrls(userId, cursor, limit);
 
       res.status(200).json({
         success: true,
-        data: urls,
+        data: result,
       });
     } catch (error: any) {
       res.status(500).json({
         success: false,
         message: error.message || 'Failed to fetch URLs',
+      });
+    }
+  }
+
+  async getUrlAnalytics(req: AuthRequest, res: Response) {
+    try {
+      const userId = req.userId;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          message: 'Unauthorized',
+        });
+      }
+
+      const { shortCode } = req.params;
+      const code = Array.isArray(shortCode) ? shortCode[0] : shortCode;
+
+      const url = await urlService.getUrlByShortCode(code);
+      if (url.userId !== userId) {
+        return res.status(403).json({
+          success: false,
+          message: 'Forbidden',
+        });
+      }
+
+      const analytics = await analyticsService.getClicksByUrlId(url.id);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          url: {
+            ...url,
+            shortUrl: `${process.env.BASE_URL || 'http://localhost:3000'}/url/${url.shortCode}`,
+          },
+          analytics,
+        },
+      });
+    } catch (error: any) {
+      res.status(404).json({
+        success: false,
+        message: error.message || 'URL not found',
+      });
+    }
+  }
+
+  async updateUrl(req: AuthRequest, res: Response) {
+    try {
+      const userId = req.userId;
+      if (!userId) {
+        return res
+          .status(401)
+          .json({ success: false, message: 'Unauthorized' });
+      }
+
+      const { id } = req.params;
+      const urlId = Array.isArray(id) ? id[0] : id;
+      const { originalUrl, shortCode } = req.body;
+
+      const url = await urlService.updateUrl(urlId, userId, {
+        originalUrl,
+        shortCode,
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'URL updated successfully',
+        data: url,
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Failed to update URL',
       });
     }
   }

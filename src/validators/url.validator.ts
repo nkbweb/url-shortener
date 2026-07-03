@@ -84,6 +84,40 @@ export const createUrlSchema = z.object({
     .optional(),
 });
 
+export const updateUrlSchema = z
+  .object({
+    originalUrl: z
+      .string()
+      .url('Invalid URL format')
+      .refine(
+        (url) => url.startsWith('http://') || url.startsWith('https://'),
+        'URL must use http or https protocol',
+      )
+      .refine(
+        (url) => !isBlockedDomain(url),
+        'URL contains blocked domain or internal IP address',
+      )
+      .optional(),
+    shortCode: z
+      .string()
+      .min(3, 'Short code must be at least 3 characters')
+      .max(20, 'Short code must be less than 20 characters')
+      .regex(
+        /^[a-zA-Z0-9-_]+$/,
+        'Short code can only contain letters, numbers, hyphens, and underscores',
+      )
+      .refine(
+        (code) => !RESERVED_SHORT_CODES.includes(code.toLowerCase()),
+        'This short code is reserved and cannot be used',
+      )
+      .refine((code) => !code.includes(' '), 'Short code cannot contain spaces')
+      .optional(),
+  })
+  .refine(
+    (data) => data.originalUrl !== undefined || data.shortCode !== undefined,
+    'At least one field (originalUrl or shortCode) must be provided',
+  );
+
 export const redirectSchema = z.object({
   shortCode: z.string().min(1, 'Short code is required'),
 });
