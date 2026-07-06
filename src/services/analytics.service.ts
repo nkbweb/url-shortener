@@ -31,6 +31,14 @@ export class AnalyticsService {
       clicks.filter((c) => c.userAgent),
       (c) => this.simplifyUserAgent(c.userAgent!),
     );
+    const devices = this.groupBy(
+      clicks.filter((c) => c.userAgent),
+      (c) => this.getDeviceType(c.userAgent!),
+    );
+    const os = this.groupBy(
+      clicks.filter((c) => c.userAgent),
+      (c) => this.getOSName(c.userAgent!),
+    );
     const last7Days = clicks.filter(
       (c) => c.timestamp > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
     ).length;
@@ -49,6 +57,12 @@ export class AnalyticsService {
         .sort((a, b) => b.count - a.count),
       browsers: Object.entries(browsers)
         .map(([browser, count]) => ({ browser, count }))
+        .sort((a, b) => b.count - a.count),
+      devices: Object.entries(devices)
+        .map(([device, count]) => ({ device, count }))
+        .sort((a, b) => b.count - a.count),
+      os: Object.entries(os)
+        .map(([os, count]) => ({ os, count }))
         .sort((a, b) => b.count - a.count),
     };
   }
@@ -84,6 +98,22 @@ export class AnalyticsService {
       return 'Internet Explorer';
     return 'Other';
   }
+
+  private getDeviceType(ua: string): string {
+    if (/tablet|ipad|playbook|silk/i.test(ua)) return 'Tablet';
+    if (/mobile|iphone|ipod|android/i.test(ua)) return 'Mobile';
+    return 'Desktop';
+  }
+
+  private getOSName(ua: string): string {
+    if (ua.includes('Windows')) return 'Windows';
+    if (ua.includes('Macintosh') || ua.includes('Mac OS X')) return 'macOS';
+    if (ua.includes('Android')) return 'Android';
+    if (ua.includes('iPhone') || ua.includes('iPad') || ua.includes('iPod')) return 'iOS';
+    if (ua.includes('Linux')) return 'Linux';
+    return 'Other';
+  }
 }
+
 
 export const analyticsService = new AnalyticsService();
