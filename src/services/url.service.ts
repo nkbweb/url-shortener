@@ -65,11 +65,6 @@ export class UrlService {
       throw new Error('Short URL not found');
     }
 
-    await prisma.url.update({
-      where: { id: url.id },
-      data: { clicks: { increment: 1 } },
-    });
-
     return url;
   }
 

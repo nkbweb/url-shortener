@@ -22,7 +22,9 @@ export class AnalyticsService {
       take: 500,
     });
 
-    const total = clicks.length;
+    const total = await prisma.click.count({
+      where: { urlId },
+    });
     const referrers = this.groupBy(
       clicks.filter((c) => c.referrer),
       (c) => c.referrer!,
